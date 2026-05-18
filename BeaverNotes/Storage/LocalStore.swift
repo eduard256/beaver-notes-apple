@@ -50,12 +50,14 @@ actor LocalStore {
     // Messages
 
     func message(localID: UUID) -> Message? {
-        let d = FetchDescriptor<Message>(predicate: #Predicate { $0.localID == localID })
+        let lid = localID
+        let d = FetchDescriptor<Message>(predicate: #Predicate { $0.localID == lid })
         return try? modelContext.fetch(d).first
     }
 
     func message(serverID: String, inServer serverUUID: UUID) -> Message? {
-        let d = FetchDescriptor<Message>(predicate: #Predicate { $0.serverID == serverID })
+        let sid: String? = serverID
+        let d = FetchDescriptor<Message>(predicate: #Predicate { $0.serverID == sid })
         let candidates = (try? modelContext.fetch(d)) ?? []
         return candidates.first { $0.server?.id == serverUUID }
     }

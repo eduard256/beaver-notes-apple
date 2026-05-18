@@ -20,7 +20,8 @@ enum OutboxProcessor {
 
     @MainActor
     private static func process(op: OutboxOp, server: Server, client: APIClient, context: ModelContext) async {
-        let msgDescriptor = FetchDescriptor<Message>(predicate: #Predicate { $0.localID == op.messageLocalID })
+        let targetID = op.messageLocalID
+        let msgDescriptor = FetchDescriptor<Message>(predicate: #Predicate { $0.localID == targetID })
         let message = try? context.fetch(msgDescriptor).first
 
         do {
@@ -89,7 +90,8 @@ enum OutboxProcessor {
         op.lastError = String(describing: error)
         let backoff = min(600.0, pow(2.0, Double(op.attempts)) * 5.0)
         op.nextRetryAt = Date.now.addingTimeInterval(backoff)
-        if op.attempts >= 50, let descriptor = try? context.fetch(FetchDescriptor<Message>(predicate: #Predicate { $0.localID == op.messageLocalID })).first {
+        let targetID = op.messageLocalID
+        if op.attempts >= 50, let descriptor = try? context.fetch(FetchDescriptor<Message>(predicate: #Predicate { $0.localID == targetID })).first {
             descriptor.syncState = .failed
         }
         try? context.save()

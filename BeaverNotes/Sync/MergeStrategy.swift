@@ -7,7 +7,8 @@ enum MergeStrategy {
         let localServerID = server.id
 
         // Find existing local message by serverID
-        let descriptor = FetchDescriptor<Message>(predicate: #Predicate { $0.serverID == dto.id })
+        let dtoID: String? = dto.id
+        let descriptor = FetchDescriptor<Message>(predicate: #Predicate { $0.serverID == dtoID })
         let candidates = (try? context.fetch(descriptor)) ?? []
         let existing = candidates.first { $0.server?.id == localServerID }
 
