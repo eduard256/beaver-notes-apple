@@ -67,6 +67,9 @@ struct WallView: View {
         .onChange(of: filteredMessages.first?.localID) { _, newID in
             handleTopChange(newID: newID)
         }
+        .task(id: appState.currentServerID) {
+            await refresh()
+        }
     }
 
     @ToolbarContentBuilder

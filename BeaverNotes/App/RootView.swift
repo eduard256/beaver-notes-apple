@@ -24,6 +24,24 @@ struct RootView: View {
         .onChange(of: scenePhase) { _, new in
             handleScenePhase(new)
         }
+        .onChange(of: servers.count) { _, _ in
+            // First server just added (post-onboarding) or one removed → reconfigure
+            if appState.currentServerID == nil, let first = servers.first {
+                appState.currentServerID = first.id
+            }
+            registry.activeServerID = appState.currentServerID
+            registry.startAll(servers: servers, context: modelContext)
+        }
+        .onChange(of: appState.currentServerID) { _, _ in
+            registry.activeServerID = appState.currentServerID
+            registry.startAll(servers: servers, context: modelContext)
+            Task {
+                if let id = appState.currentServerID,
+                   let server = servers.first(where: { $0.id == id }) {
+                    await registry.coordinator(for: server, context: modelContext).triggerImmediatePull()
+                }
+            }
+        }
         .overlay {
             if scenePhase != .active && PreferencesStore.shared.hidePreviewsInAppSwitcher && !servers.isEmpty {
                 PrivacyShade()
