@@ -1,31 +1,33 @@
 import SwiftUI
 
 struct WelcomePage: View {
-    let onNext: () -> Void
+    let onContinue: () -> Void
 
     var body: some View {
         VStack(spacing: Space.s6) {
             Spacer()
-            Image(systemName: "tree.fill")
-                .resizable()
-                .scaledToFit()
-                .frame(width: 96, height: 96)
+
+            Image(systemName: "tray.full.fill")
+                .font(.system(size: 72))
                 .foregroundStyle(Palette.accent)
-            VStack(spacing: Space.s3) {
-                Text("Beaver Notes")
-                    .font(.largeTitle.weight(.bold))
-                    .foregroundStyle(Palette.textPrimary)
-                Text("Your self-hosted notes, with you everywhere.")
-                    .font(.body)
-                    .multilineTextAlignment(.center)
-                    .foregroundStyle(Palette.textSecondary)
-                    .padding(.horizontal, Space.s8)
-            }
+
+            Text("Beaver Notes")
+                .font(.largeTitle.weight(.semibold))
+                .foregroundStyle(Palette.textPrimary)
+
+            Text("Your self-hosted note wall.\nTransfer text, images, and files between\nyour devices, without third parties.")
+                .multilineTextAlignment(.center)
+                .font(Typography.body)
+                .foregroundStyle(Palette.textSecondary)
+                .padding(.horizontal, Space.s6)
+
             Spacer()
-            Button("Get started", action: onNext)
+
+            Button("Get Started", action: onContinue)
                 .buttonStyle(.beaverPrimary)
                 .padding(.horizontal, Space.s6)
-            Spacer().frame(height: Space.s12)
+                .padding(.bottom, Space.s8)
         }
+        .frame(maxWidth: 480)
     }
 }

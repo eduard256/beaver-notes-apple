@@ -1,23 +1,24 @@
 import SwiftUI
 
 struct FolderRow: View {
-    let icon: String
-    let label: String
-    var count: Int? = nil
+    let symbol: String
+    let title: String
+    let count: Int?
+    let isActive: Bool
 
     var body: some View {
         HStack(spacing: Space.s3) {
-            Image(systemName: icon)
-                .foregroundStyle(Palette.textSecondary)
-                .frame(width: 22)
-            Text(label)
+            Image(systemName: symbol)
+                .foregroundStyle(isActive ? Palette.accent : Palette.textSecondary)
+                .frame(width: 18)
+            Text(title)
+                .font(.callout)
                 .foregroundStyle(Palette.textPrimary)
             Spacer()
-            if let count, count > 0 {
-                Text("\(count)")
-                    .font(.caption)
-                    .foregroundStyle(Palette.textTertiary)
+            if let count {
+                Text("\(count)").font(.caption).foregroundStyle(Palette.textTertiary)
             }
         }
+        .padding(.vertical, 4)
     }
 }

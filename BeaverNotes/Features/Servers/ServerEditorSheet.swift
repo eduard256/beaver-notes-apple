@@ -1,71 +1,54 @@
 import SwiftUI
-import SwiftData
 
 struct ServerEditorSheet: View {
-    let server: Server
-    @Environment(\.dismiss) private var dismiss
-    @Environment(\.modelContext) private var modelContext
+    @Bindable var server: Server
+    let onDone: () -> Void
 
-    @State private var name: String = ""
-    @State private var urlString: String = ""
-    @State private var password: String = ""
-    @State private var error: String?
-    @State private var working = false
+    @State private var newPassword: String = ""
 
     var body: some View {
         NavigationStack {
             Form {
-                Section("Server") {
-                    TextField("Name", text: $name)
-                    TextField("URL", text: $urlString)
+                Section("Name") {
+                    TextField("Name", text: $server.name)
+                }
+                Section("URL") {
+                    TextField("https://…", text: $server.urlString)
                         #if os(iOS)
                         .keyboardType(.URL)
                         .textInputAutocapitalization(.never)
                         .autocorrectionDisabled()
                         #endif
-                    SecureField("Password (leave blank to keep)", text: $password)
                 }
-                if let error {
-                    Section { Text(error).foregroundStyle(Palette.danger) }
+                Section("Password") {
+                    SecureField("Change password", text: $newPassword)
+                    Text("Changing the password invalidates all sessions on the server.")
+                        .font(.caption)
+                        .foregroundStyle(Palette.textTertiary)
+                }
+                Section("Sync") {
+                    Stepper(value: $server.pollingIntervalSeconds, in: 3...60) {
+                        Text("Poll every \(server.pollingIntervalSeconds)s")
+                    }
                 }
             }
-            .navigationTitle("Edit server")
+            .navigationTitle("Edit Server")
             #if os(iOS)
             .navigationBarTitleDisplayMode(.inline)
             #endif
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") { dismiss() }
+                    Button("Cancel") { onDone() }
                 }
                 ToolbarItem(placement: .confirmationAction) {
-                    Button("Save") { Task { await save() } }
-                        .disabled(working)
+                    Button("Save") {
+                        if !newPassword.isEmpty {
+                            Keychain.savePassword(newPassword, forServer: server.id)
+                        }
+                        onDone()
+                    }
                 }
             }
-            .onAppear {
-                name = server.name
-                urlString = server.urlString
-            }
         }
-    }
-
-    private func save() async {
-        working = true
-        defer { working = false }
-        server.name = name
-        server.urlString = urlString
-        if !password.isEmpty {
-            do {
-                guard let url = server.url else { error = "Invalid URL"; return }
-                let client = APIClient(serverURL: url, cookieIdentifier: server.cookieStorageIdentifier)
-                try await client.login(password: password)
-                Keychain.savePassword(password, forServer: server.id)
-            } catch {
-                self.error = error.localizedDescription
-                return
-            }
-        }
-        try? modelContext.save()
-        dismiss()
     }
 }

@@ -3,12 +3,12 @@ import SwiftUI
 struct PrivacyShade: View {
     var body: some View {
         ZStack {
-            Palette.bgPrimary.ignoresSafeArea()
-            Image(systemName: "tree.fill")
-                .resizable()
-                .scaledToFit()
-                .frame(width: 64, height: 64)
-                .foregroundStyle(Palette.accent.opacity(0.6))
+            Palette.bgPrimary
+            Image(systemName: SF.faceID)
+                .font(.system(size: 48))
+                .foregroundStyle(Palette.textTertiary)
         }
+        .ignoresSafeArea()
+        .transition(.opacity)
     }
 }

@@ -1,107 +1,142 @@
 import SwiftUI
-import SwiftData
 
 struct ServerEntryPage: View {
-    let onDone: () -> Void
+    let onCancel: () -> Void
+    let onSuccess: (Server, String) -> Void
 
-    @Environment(\.modelContext) private var modelContext
-    @Environment(AppState.self) private var appState
-    @State private var name = ""
-    @State private var urlString = ""
-    @State private var password = ""
-    @State private var error: String?
-    @State private var working = false
+    @State private var name: String = ""
+    @State private var urlString: String = ""
+    @State private var password: String = ""
+    @State private var status: Status = .idle
+    @FocusState private var focused: Field?
 
-    var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: Space.s5) {
-                VStack(alignment: .leading, spacing: Space.s2) {
-                    Text("Connect your server")
-                        .font(.title2.weight(.semibold))
-                        .foregroundStyle(Palette.textPrimary)
-                    Text("Enter the URL of your Beaver Notes server.")
-                        .font(.callout)
-                        .foregroundStyle(Palette.textSecondary)
-                }
-
-                VStack(alignment: .leading, spacing: Space.s2) {
-                    Text("Name").font(.caption).foregroundStyle(Palette.textSecondary)
-                    TextField("My server", text: $name)
-                        .beaverField()
-                        #if os(iOS)
-                        .textInputAutocapitalization(.never)
-                        .autocorrectionDisabled()
-                        #endif
-                }
-                VStack(alignment: .leading, spacing: Space.s2) {
-                    Text("URL").font(.caption).foregroundStyle(Palette.textSecondary)
-                    TextField("https://notes.example.com", text: $urlString)
-                        .beaverField()
-                        #if os(iOS)
-                        .keyboardType(.URL)
-                        .textInputAutocapitalization(.never)
-                        .autocorrectionDisabled()
-                        #endif
-                }
-                VStack(alignment: .leading, spacing: Space.s2) {
-                    Text("Password").font(.caption).foregroundStyle(Palette.textSecondary)
-                    SecureField("••••••••", text: $password)
-                        .beaverField()
-                }
-
-                if let error {
-                    Text(error)
-                        .font(.callout)
-                        .foregroundStyle(Palette.danger)
-                }
-
-                Button {
-                    Task { await connect() }
-                } label: {
-                    HStack {
-                        if working { ProgressView().tint(Palette.bgPrimary) }
-                        Text(working ? "Connecting…" : "Connect")
-                    }
-                }
-                .buttonStyle(.beaverPrimary)
-                .disabled(working || urlString.isEmpty || password.isEmpty)
-
-                Spacer(minLength: Space.s8)
-            }
-            .padding(Space.s5)
-        }
-        .background(Palette.bgPrimary)
+    enum Field: Hashable { case name, url, password }
+    enum Status: Equatable {
+        case idle
+        case probing
+        case loggingIn
+        case error(String)
     }
 
-    private func connect() async {
-        working = true
-        error = nil
-        defer { working = false }
-        do {
-            let result = try await ServerProbe.probe(urlString: urlString)
-            let server = Server(
-                name: name.trimmingCharacters(in: .whitespaces).isEmpty ? result.url.host ?? "Server" : name,
-                urlString: result.url.absoluteString,
-                sortOrder: 0
-            )
-            modelContext.insert(server)
-            try modelContext.save()
+    var body: some View {
+        VStack(alignment: .leading, spacing: Space.s5) {
+            HStack {
+                Button(action: onCancel) {
+                    HStack(spacing: 4) {
+                        Image(systemName: "chevron.left")
+                        Text("Back")
+                    }
+                }
+                .foregroundStyle(Palette.textSecondary)
+                Spacer()
+            }
+            .padding(.bottom, Space.s4)
 
-            let client = APIClient(serverURL: result.url, cookieIdentifier: server.cookieStorageIdentifier)
-            try await client.login(password: password)
+            Text("Add Server")
+                .font(.title2.weight(.semibold))
+                .foregroundStyle(Palette.textPrimary)
 
-            Keychain.savePassword(password, forServer: server.id)
-            appState.currentServerID = server.id
-            Haptics.success()
-            onDone()
-        } catch APIError.unauthorized {
-            error = "Wrong password."
-        } catch APIError.sslUntrusted {
-            error = "Server certificate is not trusted."
-        } catch APIError.notBeaverServer {
-            error = "Not a Beaver Notes server."
-        } catch let e {
-            error = e.localizedDescription
+            Text("Enter the URL of your self-hosted Beaver server, then your password.")
+                .font(Typography.callout)
+                .foregroundStyle(Palette.textSecondary)
+
+            VStack(alignment: .leading, spacing: Space.s2) {
+                Text("Name").font(.caption.weight(.medium)).foregroundStyle(Palette.textTertiary).textCase(.uppercase)
+                TextField("Home server", text: $name)
+                    .beaverField()
+                    .focused($focused, equals: .name)
+                    .submitLabel(.next)
+                    .onSubmit { focused = .url }
+                    #if os(iOS)
+                    .textInputAutocapitalization(.words)
+                    .autocorrectionDisabled()
+                    #endif
+            }
+
+            VStack(alignment: .leading, spacing: Space.s2) {
+                Text("Server URL").font(.caption.weight(.medium)).foregroundStyle(Palette.textTertiary).textCase(.uppercase)
+                TextField("https://notes.example.com", text: $urlString)
+                    .beaverField(hasError: isError)
+                    .focused($focused, equals: .url)
+                    .submitLabel(.next)
+                    .onSubmit { focused = .password }
+                    #if os(iOS)
+                    .textContentType(.URL)
+                    .keyboardType(.URL)
+                    .textInputAutocapitalization(.never)
+                    .autocorrectionDisabled()
+                    #endif
+            }
+
+            VStack(alignment: .leading, spacing: Space.s2) {
+                Text("Password").font(.caption.weight(.medium)).foregroundStyle(Palette.textTertiary).textCase(.uppercase)
+                SecureField("•••••••", text: $password)
+                    .beaverField(hasError: isError)
+                    .focused($focused, equals: .password)
+                    .submitLabel(.go)
+                    .onSubmit { connect() }
+            }
+
+            if case .error(let msg) = status {
+                Text(msg)
+                    .font(.caption)
+                    .foregroundStyle(Palette.danger)
+            }
+
+            Spacer()
+
+            Button(action: connect) {
+                HStack {
+                    if status == .probing || status == .loggingIn {
+                        ProgressView().tint(Palette.bgPrimary)
+                        Text(status == .probing ? "Checking…" : "Signing in…")
+                    } else {
+                        Text("Connect")
+                    }
+                }
+            }
+            .buttonStyle(.beaverPrimary)
+            .disabled(!canConnect)
+        }
+        .padding(Space.s5)
+        .frame(maxWidth: 520)
+        .frame(maxHeight: .infinity)
+        .onAppear { focused = .name }
+    }
+
+    private var canConnect: Bool {
+        !name.trimmingCharacters(in: .whitespaces).isEmpty &&
+        !urlString.trimmingCharacters(in: .whitespaces).isEmpty &&
+        !password.isEmpty &&
+        status != .probing && status != .loggingIn
+    }
+
+    private var isError: Bool {
+        if case .error = status { return true } else { return false }
+    }
+
+    private func connect() {
+        guard canConnect else { return }
+        status = .probing
+        let trimmedURL = urlString.trimmingCharacters(in: .whitespaces)
+        let trimmedName = name.trimmingCharacters(in: .whitespaces)
+        let pass = password
+
+        Task {
+            do {
+                let probe = try await ServerProbe.probe(urlString: trimmedURL)
+                let server = Server(name: trimmedName, urlString: probe.url.absoluteString)
+                status = .loggingIn
+
+                let client = APIClient(serverURL: probe.url, cookieIdentifier: server.cookieStorageIdentifier)
+                try await client.login(password: pass)
+
+                onSuccess(server, pass)
+            } catch let e as APIError {
+                status = .error(e.errorDescription ?? "Connection failed")
+            } catch {
+                status = .error(error.localizedDescription)
+            }
         }
     }
 }

@@ -1,51 +1,107 @@
 import SwiftUI
 import SwiftData
 
+enum WallFolder: Hashable {
+    case all
+    case pinned
+    case tag(String)
+}
+
 struct SidebarView: View {
     @Environment(AppState.self) private var appState
+    @Environment(\.modelContext) private var modelContext
     @Query(sort: \Server.sortOrder) private var servers: [Server]
-    @State private var showingAddServer = false
-    @State private var showingSettings = false
+    @State private var showAddServer = false
+    @State private var showSettings = false
 
     var body: some View {
-        List {
+        @Bindable var state = appState
+        List(selection: $state.currentFolder) {
             Section("Servers") {
-                ForEach(servers) { server in
-                    ServerRow(server: server, selected: server.id == appState.currentServerID)
-                        .contentShape(Rectangle())
-                        .onTapGesture { appState.switchTo(server: server.id) }
+                ForEach(servers) { s in
+                    Button {
+                        appState.currentServerID = s.id
+                    } label: {
+                        ServerRow(server: s, isActive: s.id == appState.currentServerID, pendingCount: s.outboxOps.count)
+                    }
+                    .buttonStyle(.plain)
                 }
+
                 Button {
-                    showingAddServer = true
+                    showAddServer = true
                 } label: {
-                    Label("Add server", systemImage: Symbols.add)
-                        .foregroundStyle(Palette.textSecondary)
+                    HStack(spacing: Space.s3) {
+                        Image(systemName: SF.add).frame(width: 18)
+                        Text("Add Server").font(.callout)
+                        Spacer()
+                    }
+                    .foregroundStyle(Palette.accent)
+                    .padding(.vertical, 4)
                 }
+                .buttonStyle(.plain)
             }
 
-            if let server = currentServer {
+            if let active = servers.first(where: { $0.id == appState.currentServerID }) {
                 Section("Folders") {
-                    FolderRow(icon: Symbols.folder, label: "All", count: server.messages.filter { $0.deletedAt == nil }.count)
-                    FolderRow(icon: Symbols.pinFill, label: "Pinned", count: server.messages.filter { $0.pinned && $0.deletedAt == nil }.count)
+                    FolderRowSelectable(value: .all, symbol: SF.folder, title: "All", count: liveCount(in: active, filter: { $0.deletedAt == nil }))
+                    FolderRowSelectable(value: .pinned, symbol: SF.pinFill, title: "Pinned", count: liveCount(in: active, filter: { $0.deletedAt == nil && $0.pinned }))
+                }
+
+                let tags = collectTags(active)
+                if !tags.isEmpty {
+                    Section("Tags") {
+                        ForEach(tags, id: \.self) { tag in
+                            FolderRowSelectable(value: .tag(tag), symbol: SF.tag, title: tag, count: nil)
+                        }
+                    }
                 }
             }
         }
         .listStyle(.sidebar)
-        .navigationTitle("Beaver Notes")
         .toolbar {
-            ToolbarItem {
-                Button { showingSettings = true } label: {
-                    Image(systemName: Symbols.settings)
-                }
+            ToolbarItem(placement: .primaryAction) {
+                Button { showSettings = true } label: { Image(systemName: SF.settings) }
             }
         }
-        .sheet(isPresented: $showingAddServer) { AddServerSheet() }
-        .sheet(isPresented: $showingSettings) {
-            NavigationStack { SettingsView() }
+        .navigationTitle("Beaver")
+        .sheet(isPresented: $showAddServer) {
+            AddServerSheet(onDone: { showAddServer = false })
+        }
+        .sheet(isPresented: $showSettings) {
+            SettingsView(onDone: { showSettings = false })
         }
     }
 
-    private var currentServer: Server? {
-        servers.first { $0.id == appState.currentServerID }
+    private func liveCount(in server: Server, filter: (Message) -> Bool) -> Int {
+        server.messages.filter(filter).count
+    }
+
+    private func collectTags(_ server: Server) -> [String] {
+        var seen = Set<String>()
+        var out: [String] = []
+        for m in server.messages where m.deletedAt == nil {
+            for t in m.tags where seen.insert(t).inserted {
+                out.append(t)
+            }
+        }
+        return out.sorted()
+    }
+}
+
+private struct FolderRowSelectable: View {
+    let value: WallFolder
+    let symbol: String
+    let title: String
+    let count: Int?
+
+    @Environment(AppState.self) private var appState
+
+    var body: some View {
+        Button {
+            appState.currentFolder = value
+        } label: {
+            FolderRow(symbol: symbol, title: title, count: count, isActive: appState.currentFolder == value)
+        }
+        .buttonStyle(.plain)
     }
 }

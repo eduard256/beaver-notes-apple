@@ -2,23 +2,30 @@ import SwiftUI
 
 struct SyncStateBadge: View {
     let state: SyncState
+    let onRetry: (() -> Void)?
 
     var body: some View {
         switch state {
+        case .synced:
+            EmptyView()
         case .local, .pending:
-            Image(systemName: Symbols.clock)
+            Image(systemName: SF.clock)
                 .font(.caption2)
                 .foregroundStyle(Palette.textTertiary)
         case .syncing:
-            Image(systemName: Symbols.arrowsClock)
+            Image(systemName: SF.arrowsClock)
                 .font(.caption2)
-                .foregroundStyle(Palette.accent)
-        case .synced:
-            EmptyView()
+                .foregroundStyle(Palette.textTertiary)
+                .symbolEffect(.pulse, options: .repeating)
         case .failed:
-            Image(systemName: Symbols.warning)
-                .font(.caption2)
-                .foregroundStyle(Palette.danger)
+            Button {
+                onRetry?()
+            } label: {
+                Image(systemName: SF.warning)
+                    .font(.caption2)
+                    .foregroundStyle(Palette.danger)
+            }
+            .buttonStyle(.plain)
         }
     }
 }

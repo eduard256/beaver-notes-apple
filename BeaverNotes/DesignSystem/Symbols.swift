@@ -1,4 +1,4 @@
-enum Symbols {
+enum SF {
     static let pin          = "pin"
     static let pinFill      = "pin.fill"
     static let trash        = "trash"

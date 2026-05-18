@@ -5,72 +5,99 @@ struct MessageBody: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: Space.s2) {
-            ForEach(MarkdownRenderer.parse(content)) { block in
-                blockView(block)
+            ForEach(blocks.indices, id: \.self) { i in
+                view(for: blocks[i])
             }
         }
     }
 
+    private var blocks: [MarkdownBlock] {
+        MarkdownRenderer.parse(content)
+    }
+
     @ViewBuilder
-    private func blockView(_ block: MarkdownBlock) -> some View {
+    private func view(for block: MarkdownBlock) -> some View {
         switch block {
         case .paragraph(let attr):
             Text(attr).font(Typography.body).foregroundStyle(Palette.textPrimary)
         case .heading(let level, let attr):
             Text(attr)
-                .font(headingFont(level))
+                .font(level == 1 ? .title3.weight(.semibold) : level == 2 ? .headline : .subheadline.weight(.semibold))
                 .foregroundStyle(Palette.textPrimary)
-        case .codeBlock(let lang, let code):
-            CodeBlockView(language: lang, code: code)
+                .padding(.top, Space.s2)
         case .bullet(let attr):
-            HStack(alignment: .firstTextBaseline, spacing: Space.s2) {
+            HStack(alignment: .top, spacing: Space.s2) {
                 Text("•").foregroundStyle(Palette.textSecondary)
-                Text(attr).foregroundStyle(Palette.textPrimary)
+                Text(attr).font(Typography.body).foregroundStyle(Palette.textPrimary)
             }
         case .blockquote(let attr):
-            HStack(spacing: Space.s3) {
+            HStack {
                 Rectangle().fill(Palette.borderPrimary).frame(width: 3)
-                Text(attr).italic().foregroundStyle(Palette.textSecondary)
+                Text(attr).font(Typography.body).foregroundStyle(Palette.textSecondary)
             }
+            .padding(.leading, 2)
+        case .codeBlock(let lang, let code):
+            CodeBlockView(language: lang, code: code)
         case .rule:
-            Rectangle().fill(Palette.borderSecondary).frame(height: 1)
-                .padding(.vertical, Space.s2)
-        }
-    }
-
-    private func headingFont(_ level: Int) -> Font {
-        switch level {
-        case 1: return .title2.weight(.bold)
-        case 2: return .title3.weight(.semibold)
-        default: return .headline
+            Rectangle().fill(Palette.borderSecondary).frame(height: 1).padding(.vertical, 4)
         }
     }
 }
 
-struct CodeBlockView: View {
+private struct CodeBlockView: View {
     let language: String?
     let code: String
+    @State private var copied = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            if let lang = language, !lang.isEmpty {
-                Text(lang)
-                    .font(Typography.monoSmall)
+            HStack {
+                Text((language ?? "code").uppercased())
+                    .font(.caption2.weight(.medium))
+                    .tracking(0.4)
                     .foregroundStyle(Palette.textTertiary)
-                    .padding(.horizontal, Space.s3)
-                    .padding(.top, Space.s2)
+                Spacer()
+                Button {
+                    copy()
+                } label: {
+                    Text(copied ? "Copied" : "Copy")
+                        .font(.caption2)
+                        .foregroundStyle(copied ? Palette.success : Palette.textTertiary)
+                }
+                .buttonStyle(.plain)
             }
-            ScrollView(.horizontal, showsIndicators: false) {
-                Text(CodeHighlighter.highlight(code, language: language))
-                    .textSelection(.enabled)
-                    .padding(Space.s3)
-            }
+            .padding(.horizontal, Space.s3)
+            .padding(.vertical, Space.s2)
+            .background(Palette.bgTertiary)
+
+            Text(CodeHighlighter.highlight(code, language: language))
+                .textSelection(.enabled)
+                .padding(Space.s3)
+                .frame(maxWidth: .infinity, alignment: .leading)
         }
         .background(Palette.codeBg)
-        .overlay(
-            RoundedRectangle(cornerRadius: Radius.sm)
-                .stroke(Palette.codeBorder, lineWidth: 1)
-        )
+        .overlay(RoundedRectangle(cornerRadius: Radius.sm).stroke(Palette.codeBorder, lineWidth: 1))
         .clipShape(RoundedRectangle(cornerRadius: Radius.sm))
     }
+
+    private func copy() {
+        #if canImport(UIKit)
+        UIPasteboard.general.string = code
+        #elseif canImport(AppKit)
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(code, forType: .string)
+        #endif
+        copied = true
+        Haptics.success()
+        Task {
+            try? await Task.sleep(nanoseconds: 1_500_000_000)
+            copied = false
+        }
+    }
 }
+
+#if canImport(UIKit)
+import UIKit
+#elseif canImport(AppKit)
+import AppKit
+#endif

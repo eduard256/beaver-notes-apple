@@ -6,8 +6,8 @@ struct UploadProgressBar: View {
     var body: some View {
         GeometryReader { geo in
             ZStack(alignment: .leading) {
-                Rectangle().fill(Palette.borderSecondary)
-                Rectangle().fill(Palette.accent).frame(width: geo.size.width * progress)
+                Capsule().fill(Palette.bgSecondary)
+                Capsule().fill(Palette.accent).frame(width: geo.size.width * progress)
             }
         }
         .frame(height: 2)

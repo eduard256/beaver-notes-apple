@@ -6,16 +6,17 @@ struct MessageFooter: View {
     let onPin: () -> Void
     let onEdit: () -> Void
     let onDelete: () -> Void
+    let onRetry: () -> Void
 
     var body: some View {
-        HStack(spacing: Space.s3) {
-            Text(message.createdAt, format: .dateTime.hour().minute())
-                .font(.caption)
+        HStack(spacing: Space.s2) {
+            Text(DateLabels.time(message.createdAt))
+                .font(.caption2.monospacedDigit())
                 .foregroundStyle(Palette.textTertiary)
-            SyncStateBadge(state: message.syncState)
+            SyncStateBadge(state: message.syncState, onRetry: onRetry)
             Spacer()
             MessageActions(message: message, onCopy: onCopy, onPin: onPin, onEdit: onEdit, onDelete: onDelete)
         }
-        .padding(.top, Space.s1)
+        .padding(.top, Space.s2)
     }
 }

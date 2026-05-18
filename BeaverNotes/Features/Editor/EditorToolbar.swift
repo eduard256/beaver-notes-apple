@@ -1,34 +1,75 @@
 import SwiftUI
 
 struct EditorToolbar: View {
-    let onAction: (MarkdownAction) -> Void
+    @Binding var text: String
+    @Binding var preview: Bool
 
     var body: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: Space.s2) {
-                btn(Symbols.bold, .bold)
-                btn(Symbols.italic, .italic)
-                btn(Symbols.code, .code)
-                btn(Symbols.heading, .heading)
-                btn(Symbols.list, .list)
-                btn(Symbols.link, .link)
-                btn(Symbols.hr, .hr)
+        HStack(spacing: 2) {
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 2) {
+                    button(SF.bold)    { wrap("**") }
+                    button(SF.italic)  { wrap("*") }
+                    button(SF.code)    { wrap("`") }
+                    divider
+                    button(SF.heading) { prepend("## ") }
+                    button(SF.list)    { prepend("- ") }
+                    button(SF.link)    { insert("[", "](url)") }
+                    button(SF.hr)      { insert("\n---\n", "") }
+                }
+                .padding(.horizontal, Space.s2)
             }
-            .padding(.horizontal, Space.s3)
-            .padding(.vertical, Space.s2)
+            Spacer(minLength: 0)
+            Toggle("", isOn: $preview)
+                .toggleStyle(PreviewToggleStyle())
+                .padding(.trailing, Space.s2)
         }
-        .background(Palette.bgSecondary)
+        .frame(height: 40)
     }
 
-    private func btn(_ symbol: String, _ action: MarkdownAction) -> some View {
-        Button {
-            onAction(action)
-        } label: {
-            Image(systemName: symbol)
+    private var divider: some View {
+        Rectangle().fill(Palette.borderSecondary).frame(width: 1, height: 20).padding(.horizontal, 4)
+    }
+
+    @ViewBuilder
+    private func button(_ system: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Image(systemName: system)
                 .font(.callout)
-                .foregroundStyle(Palette.textPrimary)
-                .frame(width: 36, height: 32)
-                .background(Palette.bgCard)
+                .frame(width: 32, height: 32)
+                .foregroundStyle(Palette.textSecondary)
+        }
+        .buttonStyle(.plain)
+    }
+
+    private func wrap(_ marker: String) {
+        text = text + marker + marker
+    }
+
+    private func prepend(_ s: String) {
+        if text.isEmpty || text.hasSuffix("\n") {
+            text += s
+        } else {
+            text += "\n" + s
+        }
+    }
+
+    private func insert(_ before: String, _ after: String) {
+        text = text + before + after
+    }
+}
+
+private struct PreviewToggleStyle: ToggleStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        Button {
+            configuration.isOn.toggle()
+        } label: {
+            Image(systemName: SF.preview)
+                .font(.callout)
+                .padding(.horizontal, Space.s3)
+                .frame(height: 32)
+                .foregroundStyle(configuration.isOn ? Palette.accent : Palette.textSecondary)
+                .background(configuration.isOn ? Palette.accent.opacity(0.12) : Color.clear)
                 .clipShape(RoundedRectangle(cornerRadius: Radius.sm))
         }
         .buttonStyle(.plain)

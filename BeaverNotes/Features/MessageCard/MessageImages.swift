@@ -1,130 +1,134 @@
 import SwiftUI
-#if canImport(UIKit)
-import UIKit
-#elseif canImport(AppKit)
-import AppKit
-#endif
-
-struct PreviewIndex: Identifiable, Equatable { let id: Int }
 
 struct MessageImages: View {
-    let message: Message
-    @State private var previewIndex: PreviewIndex?
-
-    private var images: [LocalFile] { message.files.filter { $0.isImage } }
+    let files: [LocalFile]
+    let server: Server?
+    let onTap: (LocalFile) -> Void
 
     var body: some View {
-        if !images.isEmpty {
-            content
-                .fullScreenCoverCompat(item: $previewIndex) { idx in
-                    ImagePreviewOverlay(files: images, startIndex: idx.id, server: message.server)
-                }
+        Group {
+            if files.count == 1 {
+                single(files[0])
+            } else {
+                grid
+            }
         }
     }
 
-    @ViewBuilder
-    private var content: some View {
-        switch images.count {
-        case 1:
-            thumbnail(images[0], index: 0)
+    private func single(_ file: LocalFile) -> some View {
+        Button { onTap(file) } label: {
+            CachedImage(file: file, server: server)
                 .frame(maxWidth: 420)
+                .frame(maxHeight: 320)
+                .clipped()
                 .clipShape(RoundedRectangle(cornerRadius: Radius.md))
-        case 2...4:
-            LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: Space.s2) {
-                ForEach(Array(images.enumerated()), id: \.offset) { i, f in
-                    thumbnail(f, index: i)
+        }
+        .buttonStyle(.plain)
+    }
+
+    private var grid: some View {
+        let cols: Int = files.count <= 4 ? 2 : 3
+        let layout = Array(repeating: GridItem(.flexible(), spacing: Space.s2), count: cols)
+        return LazyVGrid(columns: layout, spacing: Space.s2) {
+            ForEach(files, id: \.localID) { f in
+                Button { onTap(f) } label: {
+                    CachedImage(file: f, server: server)
                         .aspectRatio(1, contentMode: .fill)
+                        .frame(maxWidth: .infinity)
+                        .clipped()
                         .clipShape(RoundedRectangle(cornerRadius: Radius.sm))
                 }
-            }
-        default:
-            LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible()), GridItem(.flexible())], spacing: Space.s2) {
-                ForEach(Array(images.prefix(9).enumerated()), id: \.offset) { i, f in
-                    ZStack {
-                        thumbnail(f, index: i)
-                            .aspectRatio(1, contentMode: .fill)
-                        if i == 8 && images.count > 9 {
-                            Color.black.opacity(0.5)
-                            Text("+\(images.count - 9)")
-                                .font(.title3.weight(.semibold))
-                                .foregroundStyle(.white)
-                        }
-                    }
-                    .clipShape(RoundedRectangle(cornerRadius: Radius.sm))
-                }
+                .buttonStyle(.plain)
             }
         }
-    }
-
-    private func thumbnail(_ file: LocalFile, index: Int) -> some View {
-        ImageLoaderView(file: file, server: message.server)
-            .contentShape(Rectangle())
-            .onTapGesture { previewIndex = PreviewIndex(id: index) }
     }
 }
 
-struct ImageLoaderView: View {
+struct CachedImage: View {
     let file: LocalFile
     let server: Server?
-    @State private var url: URL?
-    @State private var loading = false
+
+    @State private var image: PlatformImageBridge?
+    @State private var loadFailed = false
 
     var body: some View {
-        ZStack {
-            Palette.bgTertiary
-            if let url, let img = loadImage(url) {
-                img.resizable().scaledToFill()
-            } else if loading {
-                ProgressView()
+        Group {
+            if let image {
+                #if canImport(UIKit)
+                Image(uiImage: image)
+                    .resizable()
+                    .scaledToFill()
+                #elseif canImport(AppKit)
+                Image(nsImage: image)
+                    .resizable()
+                    .scaledToFill()
+                #endif
+            } else if loadFailed {
+                placeholder
             } else {
-                Image(systemName: Symbols.image).foregroundStyle(Palette.textTertiary)
+                Palette.bgSecondary
+                    .overlay { ProgressView().tint(Palette.textTertiary) }
             }
         }
-        .task { await load() }
+        .task {
+            await load()
+        }
     }
 
-    private func loadImage(_ url: URL) -> Image? {
-        #if canImport(UIKit)
-        if let img = UIImage(contentsOfFile: url.path) { return Image(uiImage: img) }
-        #elseif canImport(AppKit)
-        if let img = NSImage(contentsOfFile: url.path) { return Image(nsImage: img) }
-        #endif
-        return nil
+    private var placeholder: some View {
+        Palette.bgSecondary
+            .overlay {
+                VStack(spacing: 4) {
+                    Image(systemName: SF.image).foregroundStyle(Palette.textTertiary)
+                    Text(file.filename).font(.caption2).foregroundStyle(Palette.textTertiary)
+                }
+                .padding(4)
+            }
     }
 
     private func load() async {
-        if let local = file.localPath {
-            url = URL(fileURLWithPath: local)
+        guard image == nil, let serverID = file.serverID, let server else { return }
+        if let localPath = file.localPath, let img = await loadImage(at: URL(fileURLWithPath: localPath)) {
+            image = img
             return
         }
-        if let source = file.sourcePath {
-            url = URL(fileURLWithPath: source)
+        if let url = await FileCache.shared.cachedURL(serverID: serverID), let img = await loadImage(at: url) {
+            image = img
             return
         }
-        guard let sid = file.serverID, let server, let serverURL = server.url else { return }
-        if let cached = await FileCache.shared.cachedURL(serverID: sid) {
-            url = cached
-            return
+        if file.size <= 2 * 1024 * 1024 {
+            let dst = AppGroup.fileCacheDir.appendingPathComponent(serverID)
+            do {
+                let client = APIClient(serverURL: server.url ?? URL(string: "http://invalid")!, cookieIdentifier: server.cookieStorageIdentifier)
+                try await client.downloadFile(serverID: serverID, to: dst)
+                if let img = await loadImage(at: dst) {
+                    image = img
+                    return
+                }
+            } catch {
+                loadFailed = true
+            }
+        } else {
+            loadFailed = true
         }
-        loading = true
-        defer { loading = false }
-        let client = APIClient(serverURL: serverURL, cookieIdentifier: server.cookieStorageIdentifier)
-        let dst = AppGroup.fileCacheDir.appendingPathComponent(sid)
-        do {
-            try await client.downloadFile(serverID: sid, to: dst)
-            url = dst
-        } catch {}
     }
-}
 
-extension View {
-    @ViewBuilder
-    func fullScreenCoverCompat<Item: Identifiable, Content: View>(item: Binding<Item?>, @ViewBuilder content: @escaping (Item) -> Content) -> some View {
-        #if os(iOS)
-        self.fullScreenCover(item: item, content: content)
+    private func loadImage(at url: URL) async -> PlatformImageBridge? {
+        guard let data = try? Data(contentsOf: url) else { return nil }
+        #if canImport(UIKit)
+        return UIImage(data: data)
+        #elseif canImport(AppKit)
+        return NSImage(data: data)
         #else
-        self.sheet(item: item, content: content)
+        return nil
         #endif
     }
 }
 
+#if canImport(UIKit)
+import UIKit
+typealias PlatformImageBridge = UIImage
+#elseif canImport(AppKit)
+import AppKit
+typealias PlatformImageBridge = NSImage
+#endif

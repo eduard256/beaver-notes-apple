@@ -1,42 +1,33 @@
 import SwiftUI
 
 struct OptimizeToggle: View {
-    @Binding var enabled: Bool
-    let sourceURL: URL
-    @State private var originalSize: Int64 = 0
+    @Binding var optimize: Bool
+    let originalBytes: Int64
+    let estimatedBytes: Int64?
 
     var body: some View {
         HStack(spacing: Space.s3) {
-            Toggle(isOn: $enabled) {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("Optimize")
-                        .font(.callout.weight(.medium))
-                        .foregroundStyle(Palette.textPrimary)
-                    Text(estimate)
+            Toggle("", isOn: $optimize)
+                .labelsHidden()
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Optimize")
+                    .font(.callout.weight(.medium))
+                    .foregroundStyle(Palette.textPrimary)
+                if optimize, let est = estimatedBytes {
+                    Text("\(formatBytes(originalBytes)) → \(formatBytes(est))")
+                        .font(.caption2)
+                        .foregroundStyle(Palette.success)
+                } else if !optimize {
+                    Text("Send original (\(formatBytes(originalBytes)))")
                         .font(.caption2)
                         .foregroundStyle(Palette.textTertiary)
                 }
             }
-            .tint(Palette.accent)
+            Spacer()
         }
-        .padding(.horizontal, Space.s4)
-        .padding(.vertical, Space.s2)
+        .padding(Space.s3)
         .background(Palette.bgSecondary)
-        .task { await computeOriginal() }
-    }
-
-    private var estimate: String {
-        guard originalSize > 0 else { return "calculating…" }
-        let bcf = ByteCountFormatter()
-        if enabled {
-            let optimized = Int64(Double(originalSize) * 0.18)
-            return "\(bcf.string(fromByteCount: originalSize)) → ~\(bcf.string(fromByteCount: optimized))"
-        }
-        return bcf.string(fromByteCount: originalSize)
-    }
-
-    private func computeOriginal() async {
-        let attrs = try? FileManager.default.attributesOfItem(atPath: sourceURL.path)
-        originalSize = (attrs?[.size] as? Int64) ?? 0
+        .clipShape(RoundedRectangle(cornerRadius: Radius.md))
     }
 }

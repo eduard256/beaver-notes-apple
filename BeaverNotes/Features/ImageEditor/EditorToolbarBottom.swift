@@ -1,44 +1,46 @@
 import SwiftUI
 
+enum EditorMode: String, CaseIterable, Identifiable {
+    case crop, rotate, filters, draw
+    var id: String { rawValue }
+    var symbol: String {
+        switch self {
+        case .crop:    return SF.crop
+        case .rotate:  return SF.rotate
+        case .filters: return SF.filters
+        case .draw:    return SF.draw
+        }
+    }
+    var label: String {
+        switch self {
+        case .crop:    return "Crop"
+        case .rotate:  return "Rotate"
+        case .filters: return "Filters"
+        case .draw:    return "Draw"
+        }
+    }
+}
+
 struct EditorToolbarBottom: View {
     @Binding var mode: EditorMode
-    let onReset: () -> Void
 
     var body: some View {
-        HStack(spacing: Space.s2) {
-            tab(.crop, symbol: Symbols.crop, label: "Crop")
-            tab(.rotate, symbol: Symbols.rotate, label: "Rotate")
-            tab(.filters, symbol: Symbols.filters, label: "Filters")
-            tab(.draw, symbol: Symbols.draw, label: "Draw")
-            Button {
-                onReset()
-            } label: {
-                VStack(spacing: 4) {
-                    Image(systemName: Symbols.reset)
-                    Text("Reset").font(.caption2)
+        HStack(spacing: 0) {
+            ForEach(EditorMode.allCases) { m in
+                Button {
+                    mode = m
+                } label: {
+                    VStack(spacing: 2) {
+                        Image(systemName: m.symbol).font(.callout)
+                        Text(m.label).font(.caption2)
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, Space.s2)
+                    .foregroundStyle(mode == m ? Palette.accent : Palette.textSecondary)
                 }
-                .foregroundStyle(Palette.danger)
-                .frame(maxWidth: .infinity)
+                .buttonStyle(.plain)
             }
-            .buttonStyle(.plain)
         }
-        .padding(.horizontal, Space.s3)
-        .padding(.vertical, Space.s3)
-        .background(Palette.bgCard)
-    }
-
-    private func tab(_ m: EditorMode, symbol: String, label: String) -> some View {
-        Button {
-            mode = m
-            if m == .rotate { /* handled via state */ }
-        } label: {
-            VStack(spacing: 4) {
-                Image(systemName: symbol)
-                Text(label).font(.caption2)
-            }
-            .foregroundStyle(mode == m ? Palette.accent : Palette.textSecondary)
-            .frame(maxWidth: .infinity)
-        }
-        .buttonStyle(.plain)
+        .frame(height: 56)
     }
 }

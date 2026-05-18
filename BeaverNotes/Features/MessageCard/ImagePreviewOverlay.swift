@@ -1,48 +1,48 @@
 import SwiftUI
 
 struct ImagePreviewOverlay: View {
-    let files: [LocalFile]
-    @State var startIndex: Int
+    let file: LocalFile
     let server: Server?
-    @Environment(\.dismiss) private var dismiss
+    let onClose: () -> Void
+
     @State private var scale: CGFloat = 1
-    @State private var offset: CGSize = .zero
+    @GestureState private var pinch: CGFloat = 1
 
     var body: some View {
         ZStack {
             Color.black.ignoresSafeArea()
-            TabView(selection: $startIndex) {
-                ForEach(Array(files.enumerated()), id: \.offset) { i, f in
-                    ImageLoaderView(file: f, server: server)
-                        .scaledToFit()
-                        .scaleEffect(scale)
-                        .offset(offset)
-                        .gesture(MagnificationGesture().onChanged { scale = max(1, $0) })
-                        .gesture(DragGesture().onChanged { offset = $0.translation }.onEnded { _ in
-                            withAnimation { offset = .zero }
-                        })
-                        .tag(i)
+
+            CachedImage(file: file, server: server)
+                .scaledToFit()
+                .scaleEffect(scale * pinch)
+                .gesture(
+                    MagnificationGesture()
+                        .updating($pinch) { v, state, _ in state = v }
+                        .onEnded { v in
+                            scale = min(max(scale * v, 1), 5)
+                        }
+                )
+                .onTapGesture(count: 2) {
+                    withAnimation { scale = scale > 1 ? 1 : 2 }
                 }
-            }
-            #if os(iOS)
-            .tabViewStyle(.page)
-            #endif
+                .onTapGesture { onClose() }
 
             VStack {
                 HStack {
                     Spacer()
-                    Button { dismiss() } label: {
-                        Image(systemName: Symbols.close)
-                            .font(.title3)
+                    Button(action: onClose) {
+                        Image(systemName: SF.close)
+                            .font(.title3.weight(.semibold))
                             .foregroundStyle(.white)
                             .padding(Space.s3)
-                            .background(.black.opacity(0.4), in: Circle())
+                            .background(.ultraThinMaterial)
+                            .clipShape(Circle())
                     }
                     .buttonStyle(.plain)
-                    .padding()
                 }
                 Spacer()
             }
+            .padding(Space.s4)
         }
     }
 }

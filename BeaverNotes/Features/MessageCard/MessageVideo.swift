@@ -1,70 +1,52 @@
 import SwiftUI
 import AVKit
 
-struct MessageVideo: View {
-    let message: Message
-    @State private var playerURL: URL?
-    @State private var presenting = false
+struct MessageVideoRow: View {
+    let file: LocalFile
+    let server: Server?
 
-    private var videos: [LocalFile] { message.files.filter { $0.isVideo } }
+    @State private var presentingPlayer = false
 
     var body: some View {
-        if !videos.isEmpty {
-            VStack(spacing: Space.s2) {
-                ForEach(videos) { v in
-                    posterFor(v)
+        Button {
+            presentingPlayer = true
+        } label: {
+            HStack(spacing: Space.s3) {
+                ZStack {
+                    RoundedRectangle(cornerRadius: Radius.sm)
+                        .fill(Palette.bgTertiary)
+                        .frame(width: 56, height: 56)
+                    Image(systemName: SF.play)
+                        .font(.title3)
+                        .foregroundStyle(Palette.textSecondary)
                 }
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(file.filename)
+                        .font(.callout.weight(.medium))
+                        .foregroundStyle(Palette.textPrimary)
+                        .lineLimit(1)
+                    Text(formatBytes(file.size))
+                        .font(.caption2)
+                        .foregroundStyle(Palette.textTertiary)
+                }
+                Spacer()
             }
-            .sheet(isPresented: $presenting) {
-                if let url = playerURL {
-                    VideoPlayer(player: AVPlayer(url: url))
-                        #if os(iOS)
-                        .ignoresSafeArea()
-                        #endif
-                }
+            .padding(Space.s3)
+            .background(Palette.bgSecondary)
+            .clipShape(RoundedRectangle(cornerRadius: Radius.md))
+        }
+        .buttonStyle(.plain)
+        .sheet(isPresented: $presentingPlayer) {
+            if let url = videoURL() {
+                VideoPlayer(player: AVPlayer(url: url))
+                    .ignoresSafeArea()
             }
         }
     }
 
-    private func posterFor(_ file: LocalFile) -> some View {
-        ZStack {
-            Palette.bgTertiary
-            Image(systemName: Symbols.play)
-                .font(.system(size: 40))
-                .foregroundStyle(.white)
-                .padding(Space.s4)
-                .background(Color.black.opacity(0.4), in: Circle())
-        }
-        .aspectRatio(16/9, contentMode: .fit)
-        .frame(maxWidth: 420)
-        .clipShape(RoundedRectangle(cornerRadius: Radius.md))
-        .contentShape(Rectangle())
-        .onTapGesture { Task { await present(file) } }
-    }
-
-    private func present(_ file: LocalFile) async {
-        if let local = file.localPath {
-            playerURL = URL(fileURLWithPath: local)
-            presenting = true
-            return
-        }
-        if let source = file.sourcePath {
-            playerURL = URL(fileURLWithPath: source)
-            presenting = true
-            return
-        }
-        guard let sid = file.serverID, let server = message.server, let url = server.url else { return }
-        if let cached = await FileCache.shared.cachedURL(serverID: sid) {
-            playerURL = cached
-            presenting = true
-            return
-        }
-        let client = APIClient(serverURL: url, cookieIdentifier: server.cookieStorageIdentifier)
-        let dst = AppGroup.fileCacheDir.appendingPathComponent(sid)
-        do {
-            try await client.downloadFile(serverID: sid, to: dst)
-            playerURL = dst
-            presenting = true
-        } catch {}
+    private func videoURL() -> URL? {
+        if let local = file.localPath { return URL(fileURLWithPath: local) }
+        guard let server, let base = server.url, let sid = file.serverID else { return nil }
+        return base.appendingPathComponent("api/files/\(sid)")
     }
 }

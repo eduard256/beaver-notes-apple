@@ -3,59 +3,97 @@ import SwiftData
 import PhotosUI
 
 struct QuickInputView: View {
-    let server: Server
+    let onEdit: (Message) -> Void
+
     @Environment(\.modelContext) private var modelContext
+    @Environment(AppState.self) private var appState
+    @Query(sort: \Server.sortOrder) private var servers: [Server]
+
     @State private var text: String = ""
     @State private var attachments: [PendingAttachment] = []
-    @State private var photoItems: [PhotosPickerItem] = []
-    @State private var showImageEditor = false
-    @State private var pendingImageURL: URL?
+    @State private var photoSelection: [PhotosPickerItem] = []
+    @State private var showFullEditor = false
+    @State private var uploadProgress: Double = 0
+    @State private var sending = false
 
     var body: some View {
         VStack(spacing: 0) {
             if !attachments.isEmpty {
-                AttachmentBar(attachments: attachments) { remove in
-                    attachments.removeAll { $0.id == remove.id }
+                AttachmentBar(attachments: attachments) { a in
+                    attachments.removeAll { $0.id == a.id }
                 }
+                .padding(.top, Space.s2)
+            }
+
+            if uploadProgress > 0 && uploadProgress < 1 {
+                UploadProgressBar(progress: uploadProgress)
+                    .padding(.horizontal, Space.s4)
+                    .padding(.top, 4)
             }
 
             HStack(alignment: .bottom, spacing: Space.s2) {
-                PhotosPicker(selection: $photoItems, matching: .any(of: [.images, .videos])) {
-                    Image(systemName: Symbols.attach)
+                PhotosPicker(selection: $photoSelection, matching: .any(of: [.images, .videos])) {
+                    Image(systemName: SF.attach)
                         .font(.title3)
-                        .foregroundStyle(Palette.accent)
-                        .frame(width: 40, height: 40)
+                        .foregroundStyle(Palette.textTertiary)
+                        .frame(width: 36, height: 36)
+                }
+                .buttonStyle(.plain)
+                .onChange(of: photoSelection) { _, items in
+                    Task { await ingestPicker(items) }
+                }
+
+                TextField("Message…", text: $text, axis: .vertical)
+                    .lineLimit(1...6)
+                    .textFieldStyle(.plain)
+                    .padding(.horizontal, Space.s3)
+                    .padding(.vertical, 8)
+                    .background(Palette.bgInput)
+                    .overlay(RoundedRectangle(cornerRadius: Radius.lg).stroke(Palette.borderPrimary, lineWidth: 1))
+                    .clipShape(RoundedRectangle(cornerRadius: Radius.lg))
+                    .onChange(of: text) { _, new in
+                        if let id = appState.currentServerID {
+                            Drafts.save(new, forServer: id)
+                        }
+                    }
+
+                Button {
+                    showFullEditor = true
+                } label: {
+                    Image(systemName: SF.expand)
+                        .font(.title3)
+                        .foregroundStyle(Palette.textTertiary)
+                        .frame(width: 36, height: 36)
                 }
                 .buttonStyle(.plain)
 
-                QuickInputTextEditor(text: $text, onSubmit: send)
-
-                Button(action: send) {
-                    Image(systemName: Symbols.send)
+                Button {
+                    send()
+                } label: {
+                    Image(systemName: SF.send)
                         .font(.title2)
-                        .foregroundStyle(canSend ? Palette.accent : Palette.textTertiary)
+                        .foregroundStyle(canSend ? Palette.accent : Palette.textTertiary.opacity(0.4))
+                        .frame(width: 36, height: 36)
                 }
                 .buttonStyle(.plain)
-                .disabled(!canSend)
-                #if os(macOS)
-                .keyboardShortcut(.return, modifiers: .command)
-                #endif
+                .disabled(!canSend || sending)
             }
-            .padding(.horizontal, Space.s3)
-            .padding(.vertical, Space.s2)
+            .padding(.horizontal, Space.s4)
+            .padding(.top, Space.s2)
+            .padding(.bottom, Space.s2)
         }
         .background(.ultraThinMaterial)
         .overlay(alignment: .top) {
-            Rectangle().fill(Palette.borderSecondary).frame(height: 0.5)
+            Divider()
         }
-        .onAppear {
-            text = Drafts.load(forServer: server.id)
-        }
-        .onChange(of: text) { _, new in
-            Drafts.save(new, forServer: server.id)
-        }
-        .onChange(of: photoItems) { _, new in
-            Task { await loadPhotos(new) }
+        .onAppear(perform: loadDraft)
+        .onChange(of: appState.currentServerID) { _, _ in loadDraft() }
+        .sheet(isPresented: $showFullEditor) {
+            EditorView(initialContent: text, isEdit: false) { final in
+                text = final
+                showFullEditor = false
+                send()
+            }
         }
     }
 
@@ -63,13 +101,48 @@ struct QuickInputView: View {
         !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || !attachments.isEmpty
     }
 
-    private func send() {
-        guard canSend else { return }
-        let content = text.trimmingCharacters(in: .whitespacesAndNewlines)
+    private func loadDraft() {
+        guard let id = appState.currentServerID else { return }
+        text = Drafts.load(forServer: id)
+    }
 
-        let msg = Message(server: server, content: content, tags: HashtagExtractor.extract(from: content), syncState: .pending)
-        for att in attachments {
-            let f = LocalFile(filename: att.filename, mimeType: att.mimeType, size: att.size, sourcePath: att.url.path, transferState: .queued)
+    private func ingestPicker(_ items: [PhotosPickerItem]) async {
+        for item in items {
+            guard let data = try? await item.loadTransferable(type: Data.self) else { continue }
+            let ext = item.supportedContentTypes.first?.preferredFilenameExtension ?? "bin"
+            let mime = item.supportedContentTypes.first?.preferredMIMEType ?? "application/octet-stream"
+            let url = AppGroup.outboxFilesDir.appendingPathComponent("\(UUID().uuidString).\(ext)")
+            do {
+                try data.write(to: url, options: .atomic)
+                attachments.append(PendingAttachment(url: url, filename: "attachment.\(ext)", mimeType: mime, size: Int64(data.count)))
+            } catch {
+                continue
+            }
+        }
+        photoSelection.removeAll()
+    }
+
+    private func send() {
+        guard let serverID = appState.currentServerID,
+              let server = servers.first(where: { $0.id == serverID }) else { return }
+        sending = true
+
+        let content = text
+        let payload = attachments
+        text = ""
+        attachments = []
+        Drafts.save("", forServer: serverID)
+
+        let msg = Message(server: server, content: content, syncState: .pending)
+        msg.tags = HashtagExtractor.extract(from: content)
+        for p in payload {
+            let f = LocalFile(
+                filename: p.filename,
+                mimeType: p.mimeType,
+                size: p.size,
+                sourcePath: p.url.path,
+                transferState: .queued
+            )
             msg.files.append(f)
         }
         modelContext.insert(msg)
@@ -77,49 +150,7 @@ struct QuickInputView: View {
         let op = OutboxOp(server: server, kind: .create, messageLocalID: msg.localID)
         modelContext.insert(op)
         try? modelContext.save()
-
-        text = ""
-        attachments.removeAll()
-        Drafts.save("", forServer: server.id)
+        sending = false
         Haptics.tap()
     }
-
-    private func loadPhotos(_ items: [PhotosPickerItem]) async {
-        for item in items {
-            do {
-                guard let data = try await item.loadTransferable(type: Data.self) else { continue }
-                let ext = inferExt(for: item)
-                let url = AppGroup.outboxFilesDir.appendingPathComponent("\(UUID().uuidString).\(ext)")
-                try data.write(to: url)
-                let mime = inferMime(ext: ext)
-                let size = Int64(data.count)
-                attachments.append(PendingAttachment(url: url, filename: url.lastPathComponent, mimeType: mime, size: size))
-            } catch {}
-        }
-        photoItems = []
-    }
-
-    private func inferExt(for item: PhotosPickerItem) -> String {
-        if let id = item.supportedContentTypes.first?.preferredFilenameExtension { return id }
-        return "jpg"
-    }
-
-    private func inferMime(ext: String) -> String {
-        switch ext.lowercased() {
-        case "jpg", "jpeg": return "image/jpeg"
-        case "png":  return "image/png"
-        case "heic": return "image/heic"
-        case "mp4":  return "video/mp4"
-        case "mov":  return "video/quicktime"
-        default:     return "application/octet-stream"
-        }
-    }
-}
-
-struct PendingAttachment: Identifiable, Equatable {
-    let id = UUID()
-    let url: URL
-    let filename: String
-    let mimeType: String
-    let size: Int64
 }

@@ -1,30 +1,34 @@
 import SwiftUI
 
-#if canImport(PencilKit) && os(iOS)
+#if canImport(PencilKit) && canImport(UIKit)
 import PencilKit
+import UIKit
 
 struct DrawingCanvas: UIViewRepresentable {
-    @Binding var drawingPNG: Data?
+    @Binding var drawing: PKDrawing
 
     func makeUIView(context: Context) -> PKCanvasView {
         let v = PKCanvasView()
+        v.drawingPolicy = .anyInput
         v.backgroundColor = .clear
         v.isOpaque = false
-        v.drawingPolicy = .anyInput
+        v.drawing = drawing
         v.delegate = context.coordinator
         return v
     }
 
-    func updateUIView(_ uiView: PKCanvasView, context: Context) {}
+    func updateUIView(_ uiView: PKCanvasView, context: Context) {
+        if uiView.drawing != drawing { uiView.drawing = drawing }
+    }
 
     func makeCoordinator() -> Coord { Coord(self) }
 
+    @MainActor
     final class Coord: NSObject, PKCanvasViewDelegate {
         var parent: DrawingCanvas
         init(_ p: DrawingCanvas) { parent = p }
         func canvasViewDrawingDidChange(_ canvasView: PKCanvasView) {
-            let img = canvasView.drawing.image(from: canvasView.bounds, scale: UIScreen.main.scale)
-            parent.drawingPNG = img.pngData()
+            parent.drawing = canvasView.drawing
         }
     }
 }
@@ -32,22 +36,18 @@ struct DrawingCanvas: UIViewRepresentable {
 #else
 
 struct DrawingCanvas: View {
-    @Binding var drawingPNG: Data?
+    @Binding var drawing: Data
 
     var body: some View {
-        ZStack {
-            Color.clear
-            VStack {
-                Image(systemName: Symbols.draw)
-                    .font(.largeTitle)
-                    .foregroundStyle(Palette.textTertiary)
-                Text("Drawing requires iOS or iPadOS")
-                    .font(.callout)
-                    .foregroundStyle(Palette.textSecondary)
-            }
-            .padding()
-            .background(Palette.bgCard.opacity(0.9), in: RoundedRectangle(cornerRadius: Radius.md))
+        VStack(spacing: Space.s3) {
+            Image(systemName: SF.draw)
+                .font(.system(size: 40))
+                .foregroundStyle(Palette.textTertiary)
+            Text("Drawing requires iOS or iPadOS")
+                .font(.callout)
+                .foregroundStyle(Palette.textSecondary)
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 }
 

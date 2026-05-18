@@ -1,83 +1,128 @@
 import SwiftUI
 import SwiftData
+
+struct MessageCardView: View {
+    @Bindable var message: Message
+    let onEdit: (Message) -> Void
+
+    @Environment(\.modelContext) private var modelContext
+    @Environment(AppState.self) private var appState
+    @State private var previewFile: LocalFile?
+
+    private var previewBinding: Binding<Bool> {
+        Binding(get: { previewFile != nil }, set: { if !$0 { previewFile = nil } })
+    }
+
+    var body: some View {
+        BeaverCard(pinned: message.pinned) {
+            VStack(alignment: .leading, spacing: Space.s3) {
+                if message.pinned {
+                    HStack(spacing: 4) {
+                        Image(systemName: SF.pinFill)
+                            .font(.caption2)
+                        Text("PINNED")
+                            .font(.caption2.weight(.semibold))
+                            .tracking(0.5)
+                    }
+                    .foregroundStyle(Palette.pin)
+                }
+
+                if !message.content.isEmpty {
+                    MessageBody(content: message.content)
+                        .textSelection(.enabled)
+                }
+
+                let images = message.files.filter(\.isImage)
+                let videos = message.files.filter(\.isVideo)
+                let docs   = message.files.filter { !$0.isImage && !$0.isVideo }
+
+                if !images.isEmpty {
+                    MessageImages(files: images, server: message.server) { f in
+                        previewFile = f
+                    }
+                }
+                ForEach(videos, id: \.localID) { f in
+                    MessageVideoRow(file: f, server: message.server)
+                }
+                ForEach(docs, id: \.localID) { f in
+                    MessageFileRow(file: f, server: message.server, onTap: { /* QuickLook later */ })
+                }
+
+                if !message.tags.isEmpty {
+                    MessageTags(tags: message.tags) { _ in /* filter by tag later */ }
+                }
+
+                MessageFooter(message: message, onCopy: copyContent, onPin: togglePin, onEdit: { onEdit(message) }, onDelete: deleteMessage, onRetry: retrySync)
+            }
+        }
+        .contextMenu {
+            MessageContextMenu(message: message, onCopy: copyContent, onPin: togglePin, onEdit: { onEdit(message) }, onDelete: deleteMessage)
+        }
+        .swipeActions(edge: .leading) {
+            Button { togglePin() } label: {
+                Label(message.pinned ? "Unpin" : "Pin", systemImage: SF.pin)
+            }
+            .tint(Palette.pin)
+        }
+        .swipeActions(edge: .trailing) {
+            Button(role: .destructive) { deleteMessage() } label: {
+                Label("Delete", systemImage: SF.trash)
+            }
+        }
+        .sheet(isPresented: previewBinding) {
+            if let file = previewFile {
+                ImagePreviewOverlay(file: file, server: message.server) {
+                    previewFile = nil
+                }
+            }
+        }
+    }
+
+    private func copyContent() {
+        #if canImport(UIKit)
+        UIPasteboard.general.string = message.content
+        #elseif canImport(AppKit)
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(message.content, forType: .string)
+        #endif
+    }
+
+    private func togglePin() {
+        message.pinned.toggle()
+        message.updatedAt = Date()
+        if let server = message.server {
+            let op = OutboxOp(server: server,
+                              kind: message.pinned ? .pin : .unpin,
+                              messageLocalID: message.localID)
+            modelContext.insert(op)
+            message.syncState = .pending
+        }
+        try? modelContext.save()
+    }
+
+    private func deleteMessage() {
+        message.deletedAt = Date()
+        if let server = message.server {
+            let op = OutboxOp(server: server, kind: .delete, messageLocalID: message.localID)
+            modelContext.insert(op)
+        }
+        try? modelContext.save()
+    }
+
+    private func retrySync() {
+        // Simple retry: reset attempts on the outbox op for this message.
+        guard let server = message.server else { return }
+        for op in server.outboxOps where op.messageLocalID == message.localID {
+            op.attempts = 0
+            op.nextRetryAt = Date()
+        }
+        message.syncState = .pending
+        try? modelContext.save()
+    }
+}
+
 #if canImport(UIKit)
 import UIKit
 #elseif canImport(AppKit)
 import AppKit
 #endif
-
-struct MessageCardView: View {
-    let message: Message
-    var onEdit: () -> Void = {}
-    @Environment(\.modelContext) private var modelContext
-    @State private var confirmingDelete = false
-
-    var body: some View {
-        BeaverCard(pinned: message.pinned) {
-            VStack(alignment: .leading, spacing: Space.s3) {
-                MessageBody(content: message.content)
-                MessageImages(message: message)
-                MessageVideo(message: message)
-                MessageFiles(message: message)
-                MessageTags(tags: message.tags)
-                MessageFooter(message: message, onCopy: copy, onPin: togglePin, onEdit: onEdit, onDelete: { confirmingDelete = true })
-            }
-        }
-        .contextMenu { MessageContextMenu(message: message, onCopy: copy, onEdit: onEdit, onPin: togglePin, onDelete: { confirmingDelete = true }) }
-        .swipeActions(edge: .leading) {
-            Button { togglePin() } label: {
-                Label(message.pinned ? "Unpin" : "Pin", systemImage: message.pinned ? Symbols.pin : Symbols.pinFill)
-            }
-            .tint(Palette.pin)
-        }
-        .swipeActions(edge: .trailing) {
-            Button(role: .destructive) { confirmingDelete = true } label: {
-                Label("Delete", systemImage: Symbols.trash)
-            }
-        }
-        .confirmationDialog("Delete this note?", isPresented: $confirmingDelete) {
-            Button("Delete", role: .destructive) { performDelete() }
-            Button("Cancel", role: .cancel) {}
-        }
-    }
-
-    private func copy() {
-        Pasteboard.set(message.content)
-        Haptics.success()
-    }
-
-    private func togglePin() {
-        guard let server = message.server else { return }
-        message.pinned.toggle()
-        message.updatedAt = Date()
-        let op = OutboxOp(server: server, kind: message.pinned ? .pin : .unpin, messageLocalID: message.localID)
-        modelContext.insert(op)
-        message.syncState = .pending
-        try? modelContext.save()
-        Haptics.tap()
-    }
-
-    private func performDelete() {
-        guard let server = message.server else { return }
-        message.deletedAt = Date()
-        if message.serverID != nil {
-            let op = OutboxOp(server: server, kind: .delete, messageLocalID: message.localID)
-            modelContext.insert(op)
-        } else {
-            modelContext.delete(message)
-        }
-        try? modelContext.save()
-        Haptics.warning()
-    }
-}
-
-enum Pasteboard {
-    static func set(_ text: String) {
-        #if canImport(UIKit)
-        UIPasteboard.general.string = text
-        #elseif canImport(AppKit)
-        NSPasteboard.general.clearContents()
-        NSPasteboard.general.setString(text, forType: .string)
-        #endif
-    }
-}

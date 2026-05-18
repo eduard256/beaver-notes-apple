@@ -7,12 +7,20 @@ struct AttachmentBar: View {
     var body: some View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: Space.s2) {
-                ForEach(attachments) { att in
-                    AttachmentChip(attachment: att) { onRemove(att) }
+                ForEach(attachments) { a in
+                    AttachmentChip(name: a.filename) { onRemove(a) }
                 }
             }
-            .padding(.horizontal, Space.s3)
-            .padding(.vertical, Space.s2)
+            .padding(.horizontal, Space.s4)
         }
+        .frame(height: 32)
     }
+}
+
+struct PendingAttachment: Identifiable, Hashable {
+    let id = UUID()
+    let url: URL
+    let filename: String
+    let mimeType: String
+    let size: Int64
 }

@@ -1,61 +1,49 @@
 import SwiftUI
+import AVFoundation
 
 struct VideoTimeline: View {
     let duration: Double
-    @Binding var start: Double
-    @Binding var end: Double
+    @Binding var startSeconds: Double
+    @Binding var endSeconds: Double
 
     var body: some View {
-        VStack(spacing: Space.s2) {
-            GeometryReader { geo in
-                let w = geo.size.width
-                let startX = duration > 0 ? CGFloat(start / duration) * w : 0
-                let endX = duration > 0 ? CGFloat(end / duration) * w : w
+        GeometryReader { geo in
+            let w = geo.size.width
+            let startX = w * (startSeconds / duration)
+            let endX   = w * (endSeconds / duration)
+            ZStack(alignment: .leading) {
+                Capsule().fill(Palette.bgSecondary)
+                Capsule()
+                    .fill(Palette.accent.opacity(0.3))
+                    .frame(width: max(0, endX - startX))
+                    .offset(x: startX)
 
-                ZStack(alignment: .leading) {
-                    Capsule().fill(Palette.bgSecondary).frame(height: 36)
-                    Capsule().fill(Palette.accent.opacity(0.25))
-                        .frame(width: max(0, endX - startX), height: 36)
-                        .offset(x: startX)
+                handle(at: startX)
+                    .gesture(drag(width: w, isStart: true))
+                handle(at: endX)
+                    .gesture(drag(width: w, isStart: false))
+            }
+        }
+        .frame(height: 36)
+    }
 
-                    handle.offset(x: startX - 6).gesture(drag(isStart: true, in: w))
-                    handle.offset(x: endX - 6).gesture(drag(isStart: false, in: w))
+    private func handle(at x: CGFloat) -> some View {
+        Capsule()
+            .fill(Palette.accent)
+            .frame(width: 6, height: 36)
+            .offset(x: x - 3)
+    }
+
+    private func drag(width: CGFloat, isStart: Bool) -> some Gesture {
+        DragGesture()
+            .onChanged { v in
+                let pct = max(0, min(1, v.location.x / width))
+                let t = pct * duration
+                if isStart {
+                    startSeconds = min(t, endSeconds - 0.5)
+                } else {
+                    endSeconds = max(t, startSeconds + 0.5)
                 }
             }
-            .frame(height: 36)
-
-            HStack {
-                Text(timeString(start)).font(.caption.monospacedDigit())
-                Spacer()
-                Text(timeString(end - start)).font(.caption.monospacedDigit().weight(.medium))
-                Spacer()
-                Text(timeString(end)).font(.caption.monospacedDigit())
-            }
-            .foregroundStyle(Palette.textSecondary)
-        }
-    }
-
-    private var handle: some View {
-        Rectangle()
-            .fill(Palette.accent)
-            .frame(width: 12, height: 44)
-            .clipShape(RoundedRectangle(cornerRadius: 4))
-    }
-
-    private func drag(isStart: Bool, in width: CGFloat) -> some Gesture {
-        DragGesture(minimumDistance: 0).onChanged { value in
-            guard width > 0, duration > 0 else { return }
-            let pos = max(0, min(width, value.location.x))
-            let v = Double(pos / width) * duration
-            if isStart { start = min(v, end - 0.5) }
-            else       { end = max(v, start + 0.5) }
-        }
-    }
-
-    private func timeString(_ s: Double) -> String {
-        let t = max(0, s)
-        let m = Int(t) / 60
-        let sec = Int(t) % 60
-        return String(format: "%d:%02d", m, sec)
     }
 }
