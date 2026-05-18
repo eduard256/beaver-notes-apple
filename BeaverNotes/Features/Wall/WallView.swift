@@ -11,6 +11,8 @@ struct WallView: View {
     @State private var newMessagesCount = 0
     @State private var lastSeenTopID: UUID?
     @State private var editingMessage: Message?
+    @State private var showSettings = false
+    @State private var showServerPicker = false
 
     init() {
         // We can't capture appState in @Query initializer; fetch all messages, filter in view.
@@ -70,22 +72,40 @@ struct WallView: View {
         .task(id: appState.currentServerID) {
             await refresh()
         }
+        .sheet(isPresented: $showSettings) {
+            SettingsView(onDone: { showSettings = false })
+        }
+        .sheet(isPresented: $showServerPicker) {
+            ServerPickerSheet(onDone: { showServerPicker = false })
+        }
     }
 
     @ToolbarContentBuilder
     private var toolbarContent: some ToolbarContent {
         #if os(iOS)
-        ToolbarItem(placement: .principal) {
-            Text(currentServer?.name ?? "Beaver Notes")
-                .font(.headline)
-                .foregroundStyle(Palette.textPrimary)
+        ToolbarItem(placement: .topBarLeading) {
+            Button { showServerPicker = true } label: {
+                HStack(spacing: 4) {
+                    Text(currentServer?.name ?? "Beaver Notes")
+                        .font(.headline)
+                        .foregroundStyle(Palette.textPrimary)
+                    Image(systemName: "chevron.down")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(Palette.textTertiary)
+                }
+            }
         }
         #endif
         ToolbarItem(placement: .primaryAction) {
-            NavigationLink {
-                SearchView()
-            } label: {
-                Image(systemName: SF.search)
+            HStack {
+                NavigationLink {
+                    SearchView()
+                } label: {
+                    Image(systemName: SF.search)
+                }
+                Button { showSettings = true } label: {
+                    Image(systemName: SF.settings)
+                }
             }
         }
     }

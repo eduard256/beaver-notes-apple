@@ -90,7 +90,9 @@ struct MainContainer: View {
     }
 
     private var iPhoneLayout: some View {
-        WallView()
+        NavigationStack {
+            WallView()
+        }
     }
 
     private var iPadMacLayout: some View {
