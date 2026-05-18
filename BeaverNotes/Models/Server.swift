@@ -35,5 +35,5 @@ final class Server {
 
     var url: URL? { URL(string: urlString) }
 
-    var cookieStorageIdentifier: String { "group.com.webaweba.BeaverNotes.\(id.uuidString)" }
+    var cookieStorageIdentifier: String { AppGroup.identifier }
 }
