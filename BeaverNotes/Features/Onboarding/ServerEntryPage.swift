@@ -4,8 +4,8 @@ struct ServerEntryPage: View {
     let onCancel: () -> Void
     let onSuccess: (Server, String) -> Void
 
-    @State private var name: String = ""
-    @State private var urlString: String = ""
+    @State private var name: String = "My Server"
+    @State private var urlString: String = "https://"
     @State private var password: String = ""
     @State private var status: Status = .idle
     @FocusState private var focused: Field?
@@ -101,7 +101,7 @@ struct ServerEntryPage: View {
         .padding(Space.s5)
         .frame(maxWidth: 520)
         .frame(maxHeight: .infinity)
-        .onAppear { focused = .name }
+        .onAppear { focused = .url }
     }
 
     private var canConnect: Bool {
