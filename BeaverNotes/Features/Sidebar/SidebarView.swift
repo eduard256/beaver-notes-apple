@@ -13,6 +13,8 @@ struct SidebarView: View {
     @Query(sort: \Server.sortOrder) private var servers: [Server]
     @State private var showAddServer = false
     @State private var showSettings = false
+    @State private var editing: Server?
+    @State private var pendingDelete: Server?
 
     var body: some View {
         @Bindable var state = appState
@@ -25,6 +27,24 @@ struct SidebarView: View {
                         ServerRow(server: s, isActive: s.id == appState.currentServerID, pendingCount: s.outboxOps.count)
                     }
                     .buttonStyle(.plain)
+                    .contextMenu {
+                        Button { editing = s } label: {
+                            Label("Edit", systemImage: SF.pencil)
+                        }
+                        Divider()
+                        Button(role: .destructive) {
+                            pendingDelete = s
+                        } label: {
+                            Label("Delete", systemImage: SF.trash)
+                        }
+                    }
+                    .swipeActions(edge: .trailing) {
+                        Button(role: .destructive) {
+                            pendingDelete = s
+                        } label: {
+                            Label("Delete", systemImage: SF.trash)
+                        }
+                    }
                 }
 
                 Button {
@@ -69,6 +89,34 @@ struct SidebarView: View {
         }
         .sheet(isPresented: $showSettings) {
             SettingsView(onDone: { showSettings = false })
+        }
+        .sheet(isPresented: Binding(get: { editing != nil }, set: { if !$0 { editing = nil } })) {
+            if let s = editing {
+                ServerEditorSheet(server: s, onDone: { editing = nil })
+            }
+        }
+        .confirmationDialog(
+            pendingDelete.map { "Delete \($0.name)?" } ?? "",
+            isPresented: Binding(get: { pendingDelete != nil }, set: { if !$0 { pendingDelete = nil } }),
+            titleVisibility: .visible
+        ) {
+            Button("Delete", role: .destructive) {
+                if let s = pendingDelete { delete(s) }
+                pendingDelete = nil
+            }
+            Button("Cancel", role: .cancel) { pendingDelete = nil }
+        } message: {
+            Text("Removes the server, its locally cached notes, and saved password from this device. Notes on the server itself are not affected.")
+        }
+    }
+
+    private func delete(_ s: Server) {
+        let id = s.id
+        Keychain.deletePassword(forServer: id)
+        modelContext.delete(s)
+        try? modelContext.save()
+        if appState.currentServerID == id {
+            appState.currentServerID = servers.first(where: { $0.id != id })?.id
         }
     }
 
