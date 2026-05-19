@@ -4,6 +4,7 @@ import SwiftData
 struct ServerPickerSheet: View {
     let onDone: () -> Void
     @Environment(AppState.self) private var appState
+    @Environment(\.modelContext) private var modelContext
     @Query(sort: \Server.sortOrder) private var servers: [Server]
     @State private var showAdd = false
 
@@ -18,6 +19,13 @@ struct ServerPickerSheet: View {
                         ServerRow(server: s, isActive: s.id == appState.currentServerID, pendingCount: s.outboxOps.count)
                     }
                     .buttonStyle(.plain)
+                    .swipeActions(edge: .trailing) {
+                        Button(role: .destructive) {
+                            delete(s)
+                        } label: {
+                            Label("Delete", systemImage: SF.trash)
+                        }
+                    }
                 }
                 Button {
                     showAdd = true
@@ -40,5 +48,15 @@ struct ServerPickerSheet: View {
             }
         }
         .presentationDetents([.medium, .large])
+    }
+
+    private func delete(_ s: Server) {
+        let id = s.id
+        Keychain.deletePassword(forServer: id)
+        modelContext.delete(s)
+        try? modelContext.save()
+        if appState.currentServerID == id {
+            appState.currentServerID = servers.first(where: { $0.id != id })?.id
+        }
     }
 }

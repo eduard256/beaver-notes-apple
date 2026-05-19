@@ -33,6 +33,9 @@ struct ServersListView: View {
             }
         }
         .navigationTitle("Servers")
+        #if os(iOS)
+        .toolbar { EditButton() }
+        #endif
         .sheet(isPresented: $showAdd) {
             AddServerSheet(onDone: { showAdd = false })
         }
@@ -44,11 +47,16 @@ struct ServersListView: View {
     }
 
     private func delete(at offsets: IndexSet) {
+        let removedIDs = offsets.map { servers[$0].id }
         for i in offsets {
             let s = servers[i]
             Keychain.deletePassword(forServer: s.id)
             modelContext.delete(s)
         }
         try? modelContext.save()
+
+        if let active = appState.currentServerID, removedIDs.contains(active) {
+            appState.currentServerID = servers.first(where: { !removedIDs.contains($0.id) })?.id
+        }
     }
 }

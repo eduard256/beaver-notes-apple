@@ -1,10 +1,16 @@
 import SwiftUI
+import SwiftData
 
 struct ServerEditorSheet: View {
     @Bindable var server: Server
     let onDone: () -> Void
 
+    @Environment(\.modelContext) private var modelContext
+    @Environment(AppState.self) private var appState
+    @Query(sort: \Server.sortOrder) private var servers: [Server]
+
     @State private var newPassword: String = ""
+    @State private var confirmDelete = false
 
     var body: some View {
         NavigationStack {
@@ -31,6 +37,22 @@ struct ServerEditorSheet: View {
                         Text("Poll every \(server.pollingIntervalSeconds)s")
                     }
                 }
+
+                Section {
+                    Button(role: .destructive) {
+                        confirmDelete = true
+                    } label: {
+                        HStack {
+                            Image(systemName: SF.trash)
+                            Text("Delete Server")
+                        }
+                        .frame(maxWidth: .infinity, alignment: .center)
+                    }
+                } footer: {
+                    Text("Removes the server from this device. Notes on the server remain untouched. Local cached notes will also be deleted.")
+                        .font(.caption)
+                        .foregroundStyle(Palette.textTertiary)
+                }
             }
             .navigationTitle("Edit Server")
             #if os(iOS)
@@ -49,6 +71,28 @@ struct ServerEditorSheet: View {
                     }
                 }
             }
+            .confirmationDialog(
+                "Delete \(server.name)?",
+                isPresented: $confirmDelete,
+                titleVisibility: .visible
+            ) {
+                Button("Delete", role: .destructive) { performDelete() }
+                Button("Cancel", role: .cancel) {}
+            } message: {
+                Text("This will remove the server, its locally cached notes, and saved password from this device. Notes on the server itself are not affected.")
+            }
         }
+    }
+
+    private func performDelete() {
+        let id = server.id
+        Keychain.deletePassword(forServer: id)
+        modelContext.delete(server)
+        try? modelContext.save()
+
+        if appState.currentServerID == id {
+            appState.currentServerID = servers.first(where: { $0.id != id })?.id
+        }
+        onDone()
     }
 }
