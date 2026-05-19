@@ -7,10 +7,11 @@ struct MessageCardView: View {
 
     @Environment(\.modelContext) private var modelContext
     @Environment(AppState.self) private var appState
-    @State private var previewFile: LocalFile?
+    @State private var previewIndex: Int?
+    @State private var previewImages: [LocalFile] = []
 
     private var previewBinding: Binding<Bool> {
-        Binding(get: { previewFile != nil }, set: { if !$0 { previewFile = nil } })
+        Binding(get: { previewIndex != nil }, set: { if !$0 { previewIndex = nil } })
     }
 
     var body: some View {
@@ -38,7 +39,8 @@ struct MessageCardView: View {
 
                 if !images.isEmpty {
                     MessageImages(files: images, server: message.server) { f in
-                        previewFile = f
+                        previewImages = images
+                        previewIndex = images.firstIndex(where: { $0.localID == f.localID }) ?? 0
                     }
                 }
                 ForEach(videos, id: \.localID) { f in
@@ -69,13 +71,13 @@ struct MessageCardView: View {
                 Label("Delete", systemImage: SF.trash)
             }
         }
-        .sheet(isPresented: previewBinding) {
-            if let file = previewFile {
-                ImagePreviewOverlay(file: file, server: message.server) {
-                    previewFile = nil
-                }
-            }
-        }
+        .modifier(ImagePreviewPresenter(
+            isPresented: previewBinding,
+            files: previewImages,
+            server: message.server,
+            index: Binding(get: { previewIndex ?? 0 }, set: { previewIndex = $0 }),
+            onClose: { previewIndex = nil }
+        ))
     }
 
     private func copyContent() {

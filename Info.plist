@@ -28,6 +28,8 @@
 	<string>Beaver Notes uses the camera so you can attach photos to your notes.</string>
 	<key>NSPhotoLibraryUsageDescription</key>
 	<string>Beaver Notes reads your photo library to attach photos and videos to your notes.</string>
+	<key>NSPhotoLibraryAddUsageDescription</key>
+	<string>Beaver Notes saves downloaded photos to your library.</string>
 	<key>NSFaceIDUsageDescription</key>
 	<string>Beaver Notes uses Face ID to unlock your notes.</string>
 	<key>NSAppTransportSecurity</key>

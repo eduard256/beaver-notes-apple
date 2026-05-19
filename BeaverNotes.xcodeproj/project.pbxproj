@@ -24,7 +24,7 @@
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
-		23EE97FB2FBB49500081C024 /* BeaverNotes.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = BeaverNotes.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		23EE97FB2FBB49500081C024 /* BeaverNotes.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; name = BeaverNotes.app; path = "Beaver Notes.app"; sourceTree = BUILT_PRODUCTS_DIR; };
 		23EE98082FBB49510081C024 /* BeaverNotesTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = BeaverNotesTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		23EE98122FBB49510081C024 /* BeaverNotesUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = BeaverNotesUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */

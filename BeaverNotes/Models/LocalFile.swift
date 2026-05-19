@@ -12,6 +12,8 @@ final class LocalFile {
     var sourcePath: String?
     var transferStateRaw: String
     var bytesTransferred: Int64
+    var pixelWidth: Int?
+    var pixelHeight: Int?
 
     init(
         localID: UUID = UUID(),
