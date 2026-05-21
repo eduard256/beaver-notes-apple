@@ -3,7 +3,7 @@
 **Effective date:** 2026-05-21
 **App:** Beaver Notes for iOS, iPadOS, and macOS
 **Developer:** webaweba
-**Contact:** kazantsevev09@gmail.com
+**Contact:** dev.apps.pol@gmail.com
 
 Beaver Notes is a client application for the open-source, self-hosted [Beaver Notes](https://github.com/eduard256/beaver-notes) server. This policy describes what data the app handles, where that data is stored, and what is — and is not — sent anywhere.
 
@@ -87,5 +87,5 @@ Updates will be published in this file in the project repository. The "Effective
 
 ## Contact
 
-Questions about this policy: **kazantsevev09@gmail.com**
+Questions about this policy: **dev.apps.pol@gmail.com**
 Issue tracker: <https://github.com/eduard256/beaver-notes-apple/issues>
