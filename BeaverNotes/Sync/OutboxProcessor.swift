@@ -31,12 +31,12 @@ enum OutboxProcessor {
                 message.syncState = .syncing
                 try context.save()
 
-                let fileURLs = uploadableFiles(in: message)
+                let uploads = uploadFiles(for: message)
                 let dto: MessageDTO
-                if fileURLs.isEmpty {
+                if uploads.isEmpty {
                     dto = try await client.createMessage(content: message.content)
                 } else {
-                    dto = try await client.createMessage(content: message.content, fileURLs: fileURLs)
+                    dto = try await uploadWithProgress(message: message, uploads: uploads, server: server)
                 }
                 message.serverID = dto.id
                 message.serverUpdatedAt = dto.updated_at
@@ -44,6 +44,7 @@ enum OutboxProcessor {
                 for (i, f) in (dto.files ?? []).enumerated() where i < message.files.count {
                     message.files[i].serverID = f.id
                     message.files[i].transferState = .done
+                    message.files[i].bytesTransferred = message.files[i].size
                 }
                 context.delete(op)
 
@@ -97,11 +98,55 @@ enum OutboxProcessor {
         try? context.save()
     }
 
-    private static func uploadableFiles(in message: Message) -> [URL] {
-        message.files.compactMap { f -> URL? in
-            if let path = f.sourcePath { return URL(fileURLWithPath: path) }
-            if let path = f.localPath { return URL(fileURLWithPath: path) }
-            return nil
+    private static func uploadFiles(for message: Message) -> [UploadFile] {
+        message.files.compactMap { f -> UploadFile? in
+            let url: URL
+            if let path = f.sourcePath {
+                url = URL(fileURLWithPath: path)
+            } else if let path = f.localPath {
+                url = URL(fileURLWithPath: path)
+            } else {
+                return nil
+            }
+            return UploadFile(localID: f.localID, url: url, filename: f.filename, mimeType: f.mimeType, size: f.size)
+        }
+    }
+
+    @MainActor
+    private static func uploadWithProgress(message: Message, uploads: [UploadFile], server: Server) async throws -> MessageDTO {
+        let tracker = UploadTracker.shared
+        let messageID = message.localID
+        let fileIDs = uploads.map(\.localID)
+        tracker.begin(messageID: messageID, fileIDs: fileIDs)
+        for f in message.files where fileIDs.contains(f.localID) {
+            f.transferState = .transferring
+            f.bytesTransferred = 0
+        }
+        try? message.modelContext?.save()
+
+        guard let baseURL = server.url else { throw APIError.invalidResponse }
+        let uploader = MessageUploader(serverURL: baseURL, cookieIdentifier: server.cookieStorageIdentifier)
+
+        do {
+            let dto = try await uploader.uploadCreate(content: message.content, files: uploads) { event in
+                Task { @MainActor in
+                    switch event {
+                    case .file(let id, let progress):
+                        tracker.update(fileID: id, progress: progress)
+                    case .total(let progress):
+                        tracker.update(messageID: messageID, progress: progress)
+                    }
+                }
+            }
+            tracker.finish(messageID: messageID, fileIDs: fileIDs)
+            return dto
+        } catch {
+            tracker.cancel(messageID: messageID, fileIDs: fileIDs)
+            for f in message.files where fileIDs.contains(f.localID) {
+                f.transferState = .failed
+            }
+            try? message.modelContext?.save()
+            throw error
         }
     }
 }

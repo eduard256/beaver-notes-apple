@@ -1,6 +1,7 @@
 import SwiftUI
 import SwiftData
 import PhotosUI
+import UniformTypeIdentifiers
 
 struct QuickInputView: View {
     let onEdit: (Message) -> Void
@@ -13,7 +14,7 @@ struct QuickInputView: View {
     @State private var attachments: [PendingAttachment] = []
     @State private var photoSelection: [PhotosPickerItem] = []
     @State private var showFullEditor = false
-    @State private var uploadProgress: Double = 0
+    @State private var showFileImporter = false
     @State private var sending = false
 
     var body: some View {
@@ -25,22 +26,31 @@ struct QuickInputView: View {
                 .padding(.top, Space.s2)
             }
 
-            if uploadProgress > 0 && uploadProgress < 1 {
-                UploadProgressBar(progress: uploadProgress)
-                    .padding(.horizontal, Space.s4)
-                    .padding(.top, 4)
-            }
-
             HStack(alignment: .bottom, spacing: Space.s2) {
-                PhotosPicker(selection: $photoSelection, matching: .any(of: [.images, .videos])) {
+                Menu {
+                    PhotosPicker(selection: $photoSelection, matching: .any(of: [.images, .videos])) {
+                        Label("Photo or Video", systemImage: SF.image)
+                    }
+                    Button {
+                        showFileImporter = true
+                    } label: {
+                        Label("File", systemImage: SF.file)
+                    }
+                } label: {
                     Image(systemName: SF.attach)
                         .font(.title3)
                         .foregroundStyle(Palette.textTertiary)
                         .frame(width: 36, height: 36)
                 }
+                .menuStyle(.button)
                 .buttonStyle(.plain)
                 .onChange(of: photoSelection) { _, items in
                     Task { await ingestPicker(items) }
+                }
+                .fileImporter(isPresented: $showFileImporter, allowedContentTypes: [.item], allowsMultipleSelection: true) { result in
+                    if case .success(let urls) = result {
+                        Task { await ingestFiles(urls) }
+                    }
                 }
 
                 TextField("Message…", text: $text, axis: .vertical)
@@ -120,6 +130,26 @@ struct QuickInputView: View {
             }
         }
         photoSelection.removeAll()
+    }
+
+    private func ingestFiles(_ urls: [URL]) async {
+        for src in urls {
+            let needsScope = src.startAccessingSecurityScopedResource()
+            defer { if needsScope { src.stopAccessingSecurityScopedResource() } }
+            let ext = src.pathExtension.isEmpty ? "bin" : src.pathExtension
+            let mime = UTType(filenameExtension: ext)?.preferredMIMEType ?? "application/octet-stream"
+            let dst = AppGroup.outboxFilesDir.appendingPathComponent("\(UUID().uuidString).\(ext)")
+            do {
+                if FileManager.default.fileExists(atPath: dst.path) {
+                    try FileManager.default.removeItem(at: dst)
+                }
+                try FileManager.default.copyItem(at: src, to: dst)
+                let size = (try? FileManager.default.attributesOfItem(atPath: dst.path)[.size] as? Int64) ?? 0
+                attachments.append(PendingAttachment(url: dst, filename: src.lastPathComponent, mimeType: mime, size: size))
+            } catch {
+                continue
+            }
+        }
     }
 
     private func send() {

@@ -5,6 +5,7 @@ import SwiftData
 struct BeaverNotesApp: App {
     @State private var appState = AppState()
     @State private var registry = SyncCoordinatorRegistry()
+    @State private var uploadTracker = UploadTracker.shared
     private let modelContainer: ModelContainer
 
     init() {
@@ -20,6 +21,7 @@ struct BeaverNotesApp: App {
             RootView()
                 .environment(appState)
                 .environment(registry)
+                .environment(uploadTracker)
                 .modelContainer(modelContainer)
                 .tint(Palette.accent)
                 .onOpenURL { url in

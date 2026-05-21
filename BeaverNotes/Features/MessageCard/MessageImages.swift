@@ -194,10 +194,13 @@ private struct ImageGroupGrid: View {
     }
 
     private func tile(_ file: LocalFile) -> some View {
-        CachedImage(file: file, server: server, mode: .thumbnail)
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .contentShape(Rectangle())
-            .onTapGesture { onTap(file) }
+        ZStack {
+            CachedImage(file: file, server: server, mode: .thumbnail)
+            TransferProgressOverlay(file: file, style: .image)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .contentShape(Rectangle())
+        .onTapGesture { onTap(file) }
     }
 
     private func aspect(_ file: LocalFile) -> CGFloat {
