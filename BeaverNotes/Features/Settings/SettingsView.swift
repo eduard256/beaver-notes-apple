@@ -1,10 +1,16 @@
 import SwiftUI
+import SwiftData
 
 struct SettingsView: View {
     let onDone: () -> Void
 
     @State private var prefs = PreferencesStore.shared
     @State private var cacheSize: Int64 = 0
+    @State private var confirmingErase = false
+    @State private var erasing = false
+    @Environment(AppState.self) private var appState
+    @Environment(SyncCoordinatorRegistry.self) private var registry
+    @Environment(\.modelContext) private var modelContext
 
     var body: some View {
         NavigationStack {
@@ -67,6 +73,24 @@ struct SettingsView: View {
                     Link("Privacy Policy", destination: URL(string: "https://eduard256.github.io/beaver-notes-apple/PRIVACY.md")!)
                     Link("Support", destination: URL(string: "mailto:dev.apps.pol@gmail.com")!)
                 }
+
+                Section {
+                    Button(role: .destructive) {
+                        confirmingErase = true
+                    } label: {
+                        if erasing {
+                            HStack {
+                                ProgressView()
+                                Text("Erasing…")
+                            }
+                        } else {
+                            Text("Erase all local data")
+                        }
+                    }
+                    .disabled(erasing)
+                } footer: {
+                    Text("Removes all locally stored notes, files, server connections, and preferences from this device. Data on your servers is not affected.")
+                }
             }
             .navigationTitle("Settings")
             #if os(iOS)
@@ -80,6 +104,31 @@ struct SettingsView: View {
             .task {
                 cacheSize = await FileCache.shared.currentSize()
             }
+            .confirmationDialog(
+                "Erase all local data?",
+                isPresented: $confirmingErase,
+                titleVisibility: .visible
+            ) {
+                Button("Erase Everything", role: .destructive) {
+                    eraseAll()
+                }
+                Button("Cancel", role: .cancel) { }
+            } message: {
+                Text("This deletes all locally stored notes, files, server connections, and preferences. Data on your servers is not affected.")
+            }
+        }
+    }
+
+    private func eraseAll() {
+        erasing = true
+        Task {
+            await LocalDataEraser.eraseEverything(
+                context: modelContext,
+                registry: registry,
+                appState: appState
+            )
+            erasing = false
+            onDone()
         }
     }
 
