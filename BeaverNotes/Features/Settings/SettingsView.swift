@@ -64,6 +64,8 @@ struct SettingsView: View {
                         Text(version).foregroundStyle(Palette.textTertiary)
                     }
                     Link("GitHub", destination: URL(string: "https://github.com/eduard256/beaver-notes-apple")!)
+                    Link("Privacy Policy", destination: URL(string: "https://eduard256.github.io/beaver-notes-apple/PRIVACY.md")!)
+                    Link("Support", destination: URL(string: "mailto:dev.apps.pol@gmail.com")!)
                 }
             }
             .navigationTitle("Settings")
