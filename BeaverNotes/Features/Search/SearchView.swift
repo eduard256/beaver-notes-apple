@@ -62,6 +62,9 @@ struct SearchView: View {
         #if os(iOS)
         .navigationBarTitleDisplayMode(.inline)
         #endif
+        #if os(macOS)
+        .formStyle(.grouped)
+        #endif
     }
 
     private func apply() {

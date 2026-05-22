@@ -96,6 +96,9 @@ struct SettingsView: View {
             #if os(iOS)
             .navigationBarTitleDisplayMode(.inline)
             #endif
+            #if os(macOS)
+            .formStyle(.grouped)
+            #endif
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Done", action: onDone)
