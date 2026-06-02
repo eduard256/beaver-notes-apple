@@ -247,9 +247,17 @@ struct CachedImage: View {
             }
         }
         .clipped()
-        .task(id: file.localID) {
+        .task(id: reloadKey) {
             await load()
         }
+    }
+
+    // Re-runs the loader whenever anything that affects image availability changes:
+    // the file finishes uploading (serverID appears), a local copy lands, or the
+    // transfer state flips. Without this the view keeps showing the placeholder
+    // until the app is relaunched.
+    private var reloadKey: String {
+        "\(file.localID)|\(file.serverID ?? "")|\(file.localPath ?? "")|\(file.transferStateRaw)"
     }
 
     private var placeholder: some View {
@@ -265,6 +273,7 @@ struct CachedImage: View {
 
     private func load() async {
         guard image == nil else { return }
+        loadFailed = false
         if let url = await resolveLocalURL() {
             await decode(from: url)
             return

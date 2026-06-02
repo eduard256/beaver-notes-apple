@@ -15,6 +15,7 @@ struct QuickInputView: View {
     @State private var photoSelection: [PhotosPickerItem] = []
     @State private var showFullEditor = false
     @State private var showFileImporter = false
+    @State private var showPhotoPicker = false
     @State private var sending = false
 
     var body: some View {
@@ -28,7 +29,9 @@ struct QuickInputView: View {
 
             HStack(alignment: .bottom, spacing: Space.s2) {
                 Menu {
-                    PhotosPicker(selection: $photoSelection, matching: .any(of: [.images, .videos])) {
+                    Button {
+                        showPhotoPicker = true
+                    } label: {
                         Label("Photo or Video", systemImage: SF.image)
                     }
                     Button {
@@ -44,6 +47,7 @@ struct QuickInputView: View {
                 }
                 .menuStyle(.button)
                 .buttonStyle(.plain)
+                .photosPicker(isPresented: $showPhotoPicker, selection: $photoSelection, matching: .any(of: [.images, .videos]))
                 .onChange(of: photoSelection) { _, items in
                     Task { await ingestPicker(items) }
                 }
